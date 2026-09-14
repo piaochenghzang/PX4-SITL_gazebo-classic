@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.7'>
+  <model name='yhang550'>
+    <include>
+      <uri>model://yhang550_base</uri>
+      <name>yhang550_base</name>
+      <pose>0 0 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://velodyne_vlp16</uri>
+      <name>velodyne</name>
+
+      <pose>0 0 0.08 0 0 0</pose>
+
+    </include>
+    <joint name="velodyne_mount_joint"
+           type="fixed">
+
+      <parent>yhang550_base::base_link</parent>
+
+      <!--
+        你当前 velodyne_vlp16.sdf 中写的是：
+        <link name="link">
+      -->
+      <child>velodyne::link</child>
+
+    </joint>
+    <include>
+      <uri>model://so101</uri>
+      <name>so101</name>
+
+      <!-- 第一版先沿用之前的倒挂姿态 -->
+      <pose>0 0 -0.05 3.1415926 0 0</pose>
+    </include>
+
+    <joint name="so101_mount_joint"
+          type="fixed">
+
+      <parent>yhang550_base::base_link</parent>
+      <child>so101::base_link</child>
+
+    </joint>
+  </model>
+</sdf>
