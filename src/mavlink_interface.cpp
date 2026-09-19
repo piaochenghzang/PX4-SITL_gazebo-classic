@@ -1,5 +1,5 @@
 #include "mavlink_interface.h"
-
+#include <iostream>
 MavlinkInterface::MavlinkInterface() :
     serial_dev_(io_service_){
 
@@ -517,6 +517,16 @@ void MavlinkInterface::handle_message(mavlink_message_t *msg)
   case MAVLINK_MSG_ID_HIL_ACTUATOR_CONTROLS:
     handle_actuator_controls(msg);
     break;
+  case MAVLINK_MSG_ID_ARM_JOINT_COMMAND: {
+    mavlink_arm_joint_command_t command{};
+    mavlink_msg_arm_joint_command_decode(msg, &command);
+
+    if (arm_joint_command_callback_) {
+        arm_joint_command_callback_(command);
+    }
+
+    break;
+    }
   }
 }
 

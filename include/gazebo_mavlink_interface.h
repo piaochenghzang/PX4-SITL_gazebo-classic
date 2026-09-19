@@ -46,6 +46,8 @@
 
 #include <Eigen/Eigen>
 
+#include <array>
+
 #include <gazebo/gazebo.hh>
 #include <gazebo/common/common.hh>
 #include <gazebo/common/Plugin.hh>
@@ -195,7 +197,23 @@ private:
   void handle_control(double _dt);
   bool IsRunning();
   void onSigInt();
+  void SetupArmTransport(const std::string &world_name);
+  void ArmJointCommandCallback(const mavlink_arm_joint_command_t &command);
+  void PublishArmJointCommand();
+  void ArmJointStatusCallback(ConstVector2dPtr &msg, int index);
+  void SendArmJointStatus();
+  struct ArmJointStatusHandler
+  {
+      GazeboMavlinkInterface *parent{nullptr};
+      int index{0};
 
+      void Callback(ConstVector2dPtr &msg)
+      {
+          if (parent) {
+              parent->ArmJointStatusCallback(msg, index);
+          }
+      }
+  };
   /**
    * @brief Set the MAV_SENSOR_ORIENTATION enum value based on the sensor orientation
    *
@@ -284,6 +302,23 @@ private:
 
   bool hil_mode_{false};
   bool hil_state_level_{false};
+
+  static constexpr int kArmJointCount = 6;
+
+  transport::NodePtr arm_node_;
+  std::array<transport::PublisherPtr, kArmJointCount> arm_command_pub_;
+  std::array<transport::SubscriberPtr, kArmJointCount> arm_status_sub_;
+  std::array<ArmJointStatusHandler, kArmJointCount> arm_status_handler_;
+
+  std::mutex arm_mutex_;
+  mavlink_arm_joint_command_t arm_joint_command_{};
+  bool arm_joint_command_updated_{false};
+
+  std::array<double, kArmJointCount> arm_joint_position_{};
+  std::array<double, kArmJointCount> arm_joint_velocity_{};
+  std::array<bool, kArmJointCount> arm_joint_status_received_{};
+
+  unsigned arm_status_send_counter_{0};
 
 };
 }

@@ -47,6 +47,7 @@
 #include <string>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <functional>
 
 #include <Eigen/Eigen>
 #include<Eigen/StdVector>
@@ -181,6 +182,8 @@ public:
 
     bool SerialEnabled() const { return serial_enabled_; }
     bool ReceivedHeartbeats() const { return received_heartbeats_; }
+    using ArmJointCommandCallback = std::function<void(const mavlink_arm_joint_command_t &)>;
+    void SetArmJointCommandCallback(const ArmJointCommandCallback &callback) { arm_joint_command_callback_ = callback; }
 
 private:
     bool received_actuator_{false};
@@ -276,4 +279,6 @@ private:
     std::atomic<bool> gotSigInt_ {false};
 
     bool received_heartbeats_ {false};
+
+    ArmJointCommandCallback arm_joint_command_callback_;
 };

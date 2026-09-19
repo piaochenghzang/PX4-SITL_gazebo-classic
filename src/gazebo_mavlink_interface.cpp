@@ -481,6 +481,8 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
   auto worldName = world_->GetName();
 #endif
 
+  SetupArmTransport(worldName);
+
   if (_sdf->HasElement("mavlink_udp_port")) {
     int mavlink_udp_port = _sdf->GetElement("mavlink_udp_port")->Get<int>();
     mavlink_interface_->SetMavlinkUdpPort(mavlink_udp_port);
@@ -552,6 +554,10 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
     gzerr << "Unkown protocol version! Using v" << protocol_version_ << "by default \n";
   }
 
+  mavlink_interface_->SetArmJointCommandCallback([this](const mavlink_arm_joint_command_t &command) {
+      ArmJointCommandCallback(command);
+  });
+
   mavlink_interface_->Load();
 }
 
@@ -571,6 +577,8 @@ void GazeboMavlinkInterface::OnUpdate(const common::UpdateInfo&  /*_info*/) {
     return;
   }
 
+  PublishArmJointCommand();
+  SendArmJointStatus();
 #if GAZEBO_MAJOR_VERSION >= 9
   common::Time current_time = world_->SimTime();
 #else
@@ -1272,6 +1280,124 @@ bool GazeboMavlinkInterface::IsRunning()
 }
 void GazeboMavlinkInterface::onSigInt() {
   mavlink_interface_->onSigInt();
+}
+
+void GazeboMavlinkInterface::SetupArmTransport(const std::string &world_name)
+{
+    static const std::array<std::string, kArmJointCount> joint_names = {
+        "shoulder_pan",
+        "shoulder_lift",
+        "elbow_flex",
+        "wrist_flex",
+        "wrist_roll",
+        "gripper"
+    };
+
+    arm_node_.reset(new transport::Node());
+    arm_node_->Init(world_name);
+
+    for (int i = 0; i < kArmJointCount; ++i) {
+        const std::string command_topic = "~/so101/" + joint_names[i] + "/command";
+        const std::string status_topic = "~/so101/" + joint_names[i] + "/status";
+
+        arm_command_pub_[i] = arm_node_->Advertise<msgs::Vector2d>(command_topic, 1);
+
+        arm_status_handler_[i].parent = this;
+        arm_status_handler_[i].index = i;
+
+        arm_status_sub_[i] = arm_node_->Subscribe(status_topic, &ArmJointStatusHandler::Callback, &arm_status_handler_[i]);
+
+        gzmsg << "[SO101] command topic: " << command_topic << "\n";
+        gzmsg << "[SO101] status topic: " << status_topic << "\n";
+    }
+}
+
+void GazeboMavlinkInterface::ArmJointCommandCallback(const mavlink_arm_joint_command_t &command)
+{
+    std::lock_guard<std::mutex> lock(arm_mutex_);
+    for (int i = 0; i < kArmJointCount; ++i) {
+        if (!std::isfinite(command.position[i]) || !std::isfinite(command.velocity[i])) {
+            return;
+        }
+    }
+    arm_joint_command_ = command;
+    arm_joint_command_updated_ = true;
+}
+
+void GazeboMavlinkInterface::PublishArmJointCommand()
+{
+    mavlink_arm_joint_command_t command{};
+
+    {
+        std::lock_guard<std::mutex> lock(arm_mutex_);
+
+        if (!arm_joint_command_updated_) {
+            return;
+        }
+
+        command = arm_joint_command_;
+        arm_joint_command_updated_ = false;
+    }
+
+    for (int i = 0; i < kArmJointCount; ++i) {
+        if (!arm_command_pub_[i]) {
+            continue;
+        }
+
+        msgs::Vector2d msg;
+        msg.set_x(command.position[i]);
+        msg.set_y(command.velocity[i]);
+        arm_command_pub_[i]->Publish(msg);
+    }
+}
+
+void GazeboMavlinkInterface::ArmJointStatusCallback(ConstVector2dPtr &msg, int index)
+{
+    if (!msg || index < 0 || index >= kArmJointCount) {
+        return;
+    }
+
+    if (!std::isfinite(msg->x()) || !std::isfinite(msg->y())) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(arm_mutex_);
+
+    arm_joint_position_[index] = msg->x();
+    arm_joint_velocity_[index] = msg->y();
+    arm_joint_status_received_[index] = true;
+}
+
+void GazeboMavlinkInterface::SendArmJointStatus()
+{
+    if (++arm_status_send_counter_ < 5) {
+        return;
+    }
+
+    arm_status_send_counter_ = 0;
+
+    mavlink_arm_joint_status_t status{};
+
+    {
+        std::lock_guard<std::mutex> lock(arm_mutex_);
+
+        for (int i = 0; i < kArmJointCount; ++i) {
+            if (!arm_joint_status_received_[i]) {
+                return;
+            }
+        }
+
+        for (int i = 0; i < kArmJointCount; ++i) {
+            status.position[i] = arm_joint_position_[i];
+            status.velocity[i] = arm_joint_velocity_[i];
+            // Require a NEW sample from every joint before sending another frame.
+            arm_joint_status_received_[i] = false;
+        }
+    }
+
+    mavlink_message_t msg{};
+    mavlink_msg_arm_joint_status_encode_chan(1, 200, MAVLINK_COMM_0, &msg, &status);
+    mavlink_interface_->send_mavlink_message(&msg);
 }
 
 }
