@@ -683,6 +683,9 @@
       <jointName>shoulder_pan</jointName>
 
       <topic>shoulder_pan/cmd_pos</topic>
+      <controlSource>gazebo</controlSource>
+      <gzCommandTopic>~/so101/shoulder_pan/command</gzCommandTopic>
+      <gzStatusTopic>~/so101/shoulder_pan/status</gzStatusTopic>
 
       <initialPosition>-0.070</initialPosition>
 
@@ -703,6 +706,9 @@
       <jointName>shoulder_lift</jointName>
 
       <topic>shoulder_lift/cmd_pos</topic>
+      <controlSource>gazebo</controlSource>
+      <gzCommandTopic>~/so101/shoulder_lift/command</gzCommandTopic>
+      <gzStatusTopic>~/so101/shoulder_lift/status</gzStatusTopic>
 
       <initialPosition>-1.175</initialPosition>
 
@@ -725,11 +731,15 @@
       <jointName>elbow_flex</jointName>
 
       <topic>elbow_flex/cmd_pos</topic>
+      <controlSource>gazebo</controlSource>
+      <gzCommandTopic>~/so101/elbow_flex/command</gzCommandTopic>
+      <gzStatusTopic>~/so101/elbow_flex/status</gzStatusTopic>
 
       <initialPosition>1.450</initialPosition>
 
       <p>2.5</p>
-      <i>0.0</i>
+      <i>1.0</i>
+      <iMax>0.45</iMax>
       <d>0.12</d>
 
       <cmdMax>0.6</cmdMax>
@@ -747,6 +757,9 @@
       <jointName>wrist_flex</jointName>
 
       <topic>wrist_flex/cmd_pos</topic>
+      <controlSource>gazebo</controlSource>
+      <gzCommandTopic>~/so101/wrist_flex/command</gzCommandTopic>
+      <gzStatusTopic>~/so101/wrist_flex/status</gzStatusTopic>
 
       <initialPosition>1.300</initialPosition>
 
@@ -769,8 +782,11 @@
       <jointName>wrist_roll</jointName>
 
       <topic>wrist_roll/cmd_pos</topic>
+      <controlSource>gazebo</controlSource>
+      <gzCommandTopic>~/so101/wrist_roll/command</gzCommandTopic>
+      <gzStatusTopic>~/so101/wrist_roll/status</gzStatusTopic>
 
-      <initialPosition>-1.600</initialPosition>
+      <initialPosition>-1.570</initialPosition>
 
       <p>0.8</p>
       <i>0.0</i>
@@ -787,6 +803,9 @@
       <robotNamespace>/so101</robotNamespace>
       <jointName>gripper</jointName>
       <topic>gripper/cmd_pos</topic>
+      <controlSource>gazebo</controlSource>
+      <gzCommandTopic>~/so101/gripper/command</gzCommandTopic>
+      <gzStatusTopic>~/so101/gripper/status</gzStatusTopic>
 
       <initialPosition>0.300</initialPosition>
 
