@@ -74,6 +74,7 @@
 #include <Wind.pb.h>
 
 #include "mavlink_interface.h"
+#include <so101/grasp_feedback_collector.h>
 #include "msgbuffer.h"
 
 //! Default distance sensor model joint naming
@@ -319,6 +320,7 @@ private:
   std::array<bool, kArmJointCount> arm_joint_status_received_{};
 
   unsigned arm_status_send_counter_{0};
+  std::unique_ptr<GraspFeedbackCollector> grasp_feedback_;
 
 };
 }

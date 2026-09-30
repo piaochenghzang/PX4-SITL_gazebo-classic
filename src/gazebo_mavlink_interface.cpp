@@ -559,6 +559,11 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
   });
 
   mavlink_interface_->Load();
+  if (_sdf->HasElement("enableArmGraspFeedback") && _sdf->Get<bool>("enableArmGraspFeedback")) {
+      grasp_feedback_.reset(new GraspFeedbackCollector());
+      grasp_feedback_->Load(model_, "test_cube", "cube_support");
+      gzmsg << "[SO101] read-only SIM_GROUND_TRUTH grasp feedback enabled\n";
+  }
 }
 
 // This gets called by the world update start event.
@@ -579,6 +584,14 @@ void GazeboMavlinkInterface::OnUpdate(const common::UpdateInfo&  /*_info*/) {
 
   PublishArmJointCommand();
   SendArmJointStatus();
+  if (grasp_feedback_) {
+      mavlink_arm_grasp_feedback_t feedback{};
+      if (grasp_feedback_->Sample(feedback)) {
+          mavlink_message_t message{};
+          mavlink_msg_arm_grasp_feedback_encode_chan(1, 200, MAVLINK_COMM_0, &message, &feedback);
+          mavlink_interface_->send_mavlink_message(&message);
+      }
+  }
 #if GAZEBO_MAJOR_VERSION >= 9
   common::Time current_time = world_->SimTime();
 #else
