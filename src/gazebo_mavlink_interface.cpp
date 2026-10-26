@@ -1079,7 +1079,7 @@ void GazeboMavlinkInterface::VisionCallback(OdomPtr& odom_message) {
   // Only sends ODOMETRY msgs if send_odometry is set and the protocol version is 2.0
   if (send_odometry_ && protocol_version_ == 2.0) {
     // send ODOMETRY Mavlink msg
-    mavlink_odometry_t odom;
+    mavlink_odometry_t odom{};
 
     odom.time_usec = odom_message->time_usec();
 
