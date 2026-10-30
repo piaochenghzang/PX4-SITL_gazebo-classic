@@ -26,6 +26,12 @@ endfunction(add_unit_test)
 
 # Add the tests
 
+# Contact force frame/sign checks use protobuf messages without a simulator.
+    add_executable(so101_contact_force_test so101_contact_force_test.cpp)
+    target_link_libraries(so101_contact_force_test gazebo_msgs ${PROTOBUF_LIBRARIES})
+    add_test(NAME so101_contact_force_test COMMAND so101_contact_force_test)
+
+
 
     # Gimbal controller plugin
     add_unit_test(gazebo_gimbal_controller_plugin_test gazebo_gimbal_controller_plugin_test.cpp)

@@ -1,6 +1,8 @@
 #include <so101/grasp_feedback_collector.h>
+#include <so101/contact_force.h>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <gazebo/physics/ode/ODEPhysics.hh>
 
 namespace gazebo {
@@ -29,9 +31,10 @@ bool boxBounds(physics::CollisionPtr collision, ignition::math::Vector3d &low, i
     return true;
 }
 }
-void GraspFeedbackCollector::Load(physics::ModelPtr model, const std::string &target, const std::string &support)
+void GraspFeedbackCollector::Load(physics::ModelPtr model, const std::string &target, const std::string &support,
+    bool contact_only)
 {
-    model_ = model; target_name_ = target; support_name_ = support;
+    model_ = model; target_name_ = target; support_name_ = support; contact_only_=contact_only;
     node_.reset(new transport::Node()); node_->Init(model_->GetWorld()->Name());
     subscriber_ = node_->Subscribe("~/physics/contacts", &GraspFeedbackCollector::Contacts, this);
 }
@@ -52,13 +55,14 @@ bool GraspFeedbackCollector::Resolve()
     body_ = gripper_ ? gripper_->GetCollision("gripper_body_collision") : nullptr;
     moving_ = jaw_ ? jaw_->GetCollision("moving_jaw_collision") : nullptr;
     support_collision_ = support_link_ ? support_link_->GetCollision("collision") : nullptr;
-    return gripper_ && fixed_ && moving_;
+    grasp_surface_ = object_ ? object_->GetCollision("collision") : nullptr;
+    return gripper_ && fixed_ && moving_ && (!contact_only_ || grasp_surface_);
 }
 void GraspFeedbackCollector::ClearWindow()
 {
     frames_ = fixed_frames_ = moving_frames_ = both_frames_ = 0;
     support_frames_ = other_frames_ = support_arm_frames_ = 0;
-    force_[0] = force_[1] = vertical_ = 0; force_valid_ = true;
+    force_[0] = force_[1] = vertical_ = 0; force_valid_ = true; force_wrenches_=0;
 }
 bool GraspFeedbackCollector::BenchValid() const
 {
@@ -119,9 +123,24 @@ void GraspFeedbackCollector::Contacts(ConstContactsPtr &message)
         if (first == second) continue;
         const auto &against = first ? c.collision2() : c.collision1();
         const int side = against == fixed_->GetScopedName() ? 0 : against == moving_->GetScopedName() ? 1 : -1;
-        fixed |= side == 0; moving |= side == 1;
         support |= prefix(against,support_root); other |= side < 0 && prefix(against,vehicle_root);
+        if (contact_only_ && side>=0 && (!grasp_surface_ ||
+                (first ? c.collision1() : c.collision2())!=grasp_surface_->GetScopedName())) {
+            other=true; continue; // Pads may touch the designated handle only.
+        }
+        fixed |= side == 0; moving |= side == 1;
         if (side < 0) continue;
+        if (contact_only_) {
+            if (!c.wrench_size()) { force_valid_=false; continue; }
+            for (int j=0; j<c.wrench_size(); ++j) {
+                double compression;
+                if (!so101_contact::compression(c.wrench(j),first,unsigned(side),compression)) {
+                    force_valid_=false; continue;
+                }
+                force_[side]+=compression; ++force_wrenches_;
+            }
+            continue;
+        }
         if (pose_stamp_ < 0 || std::abs(stamp-pose_stamp_) > .02 || c.wrench_size() != c.normal_size() || !c.wrench_size()) {
             force_valid_ = false; continue;
         }
@@ -141,17 +160,30 @@ bool GraspFeedbackCollector::Sample(mavlink_arm_grasp_feedback_t &out)
     std::lock_guard<std::mutex> guard(mutex_);
     const double now = model_->GetWorld()->SimTime().Double();
     if (now < last_publish_) { ++epoch_; last_publish_=now; last_contact_=-1; ClearWindow(); }
-    Resolve();
-    if (object_ && finitePose(object_->WorldPose())) { object_rotation_=object_->WorldPose().Rot(); pose_stamp_=now; }
+    const bool resolved=Resolve();
+    if (!contact_only_ && object_ && finitePose(object_->WorldPose())) { object_rotation_=object_->WorldPose().Rot(); pose_stamp_=now; }
     if (now-last_publish_ < .1) return false;
     out = {}; out.sample_time_us=uint64_t(now*1e6); out.source_sequence=++sequence_; out.world_epoch=epoch_;
-    out.profile_id=1; out.target_id=instance_changed_ ? 2 : 1; out.source=1; out.sample_window_s=now-last_publish_;
+    out.profile_id=1; out.target_id=instance_changed_ ? 2 : 1; out.source=contact_only_ ? 2 : 1; out.sample_window_s=now-last_publish_;
     out.contact_frames=frames_; const double n=std::max(1u,frames_);
     out.fixed_fraction=fixed_frames_/n; out.moving_fraction=moving_frames_/n; out.bilateral_fraction=both_frames_/n;
     out.support_fraction=support_frames_/n; out.other_fraction=other_frames_/n; out.support_arm_fraction=support_arm_frames_/n;
     out.fixed_normal_n=force_[0]/n; out.moving_normal_n=force_[1]/n; out.vertical_force_n=vertical_/n;
-    if (frames_ && now-last_contact_ < .02) out.capabilities |= 1;
-    if ((out.capabilities & 1) && force_valid_) out.capabilities |= 2;
+    const bool identity_ready=resolved && object_ && support_link_ && instance_latched_ && !instance_changed_;
+    if (frames_ && now-last_contact_ < .02 &&
+        (!contact_only_ || (now>=last_contact_ && identity_ready))) out.capabilities |= 1;
+    if ((out.capabilities & 1) && force_valid_ &&
+        (!contact_only_ || (force_wrenches_ && std::isfinite(out.fixed_normal_n) && std::isfinite(out.moving_normal_n))))
+        out.capabilities |= 2;
+    if (contact_only_) {
+        const float unknown=std::numeric_limits<float>::quiet_NaN();
+        // Unknown is explicit: no object WorldPose, bench contract or bounds.
+        for (int i=0; i<3; ++i) out.object_center_gripper[i]=unknown;
+        out.object_height_world=out.body_support_clearance=out.vertical_force_n=unknown;
+        if (!(out.capabilities & 2)) out.fixed_normal_n=out.moving_normal_n=unknown;
+        ClearWindow(); last_publish_=now;
+        return true;
+    }
     if (object_ && gripper_ && finitePose(object_->WorldPose()) && finitePose(gripper_->WorldPose())) {
         auto local = gripper_->WorldPose().Rot().RotateVectorReverse(object_->WorldPose().Pos()-gripper_->WorldPose().Pos());
         for (int i=0; i<3; ++i) out.object_center_gripper[i]=local[i];

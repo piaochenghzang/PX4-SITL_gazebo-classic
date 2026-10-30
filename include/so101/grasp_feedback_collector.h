@@ -6,10 +6,12 @@
 #include <mutex>
 
 namespace gazebo {
-// Explicitly opt-in, read-only fixed-bench sensor. No ROS or joint actuation.
+// Explicitly opt-in, read-only feedback. Contact-only mode never reads poses.
+// No ROS or joint actuation; the legacy bench source remains the default.
 class GraspFeedbackCollector {
 public:
-    void Load(physics::ModelPtr model, const std::string &target, const std::string &support);
+    void Load(physics::ModelPtr model, const std::string &target, const std::string &support,
+        bool contact_only=false);
     bool Sample(mavlink_arm_grasp_feedback_t &out);
 private:
     void Contacts(ConstContactsPtr &message);
@@ -18,7 +20,7 @@ private:
     bool BenchValid() const;
     physics::ModelPtr model_, target_, support_;
     physics::LinkPtr gripper_, jaw_, object_, support_link_;
-    physics::CollisionPtr fixed_, moving_, body_, support_collision_;
+    physics::CollisionPtr fixed_, moving_, body_, support_collision_, grasp_surface_;
     transport::NodePtr node_;
     transport::SubscriberPtr subscriber_;
     std::string target_name_, support_name_;
@@ -31,6 +33,7 @@ private:
     unsigned frames_{0}, fixed_frames_{0}, moving_frames_{0}, both_frames_{0};
     unsigned support_frames_{0}, other_frames_{0}, support_arm_frames_{0};
     double force_[2]{}, vertical_{0};
-    bool force_valid_{true};
+    bool force_valid_{true}, contact_only_{false};
+    unsigned force_wrenches_{0};
 };
 }

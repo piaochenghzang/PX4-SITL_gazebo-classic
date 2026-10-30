@@ -560,9 +560,11 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
 
   mavlink_interface_->Load();
   if (_sdf->HasElement("enableArmGraspFeedback") && _sdf->Get<bool>("enableArmGraspFeedback")) {
+      const bool contact_only = _sdf->HasElement("armGraspContactOnly") && _sdf->Get<bool>("armGraspContactOnly");
       grasp_feedback_.reset(new GraspFeedbackCollector());
-      grasp_feedback_->Load(model_, "test_cube", "cube_support");
-      gzmsg << "[SO101] read-only SIM_GROUND_TRUTH grasp feedback enabled\n";
+      grasp_feedback_->Load(model_, "test_cube", "cube_support", contact_only);
+      gzmsg << "[SO101] read-only " << (contact_only ? "SIM_CONTACT_ONLY" : "SIM_GROUND_TRUTH")
+            << " grasp feedback enabled\n";
   }
 }
 
