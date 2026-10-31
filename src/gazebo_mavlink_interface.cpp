@@ -410,6 +410,22 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
     presetManager->SetCurrentProfileParam("real_time_update_rate", real_time_update_rate);
   }
 
+  // Opt-in demo scheduling only: bound each physics step in wall time without
+  // changing the step size, sensor timestamps or the existing lockstep protocol.
+  demo_wall_step_pacing_ = _sdf->HasElement("demoWallStepPacing") && _sdf->Get<bool>("demoWallStepPacing");
+  if (demo_wall_step_pacing_) {
+#if GAZEBO_MAJOR_VERSION >= 8
+    const double step = world_->Physics()->GetMaxStepSize();
+#else
+    const double step = world_->GetPhysicsEngine()->GetMaxStepSize();
+#endif
+    if (!enable_lockstep_ || hil_mode_ || !demo_wall_step_pacer_.Configure(step,speed_factor_)) {
+      gzerr << "demoWallStepPacing requires valid SITL lockstep step/speed, aborting\n";
+      abort();
+    }
+    gzmsg << "Demo wall-step pacing enabled (no catch-up): " << step/speed_factor_ << " s per step" << std::endl;
+  }
+
   // Listen to the update event. This event is broadcast every
   // simulation iteration.
   updateConnection_ = event::Events::ConnectWorldUpdateBegin(
@@ -571,6 +587,12 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
 // This gets called by the world update start event.
 void GazeboMavlinkInterface::OnUpdate(const common::UpdateInfo&  /*_info*/) {
 
+  if (demo_wall_step_pacing_) {
+    // Pace EVERY physics step, including skipped MAVLink updates, and never
+    // hold the IMU callback mutex during the wall-clock wait.
+    demo_wall_step_pacer_.Pace([] { return std::chrono::steady_clock::now(); },
+        [](std::chrono::steady_clock::time_point deadline) { std::this_thread::sleep_until(deadline); });
+  }
   std::unique_lock<std::mutex> lock(imu_received_mutex_);
 
   if (imu_received_once_) {

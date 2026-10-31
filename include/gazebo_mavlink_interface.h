@@ -75,6 +75,7 @@
 
 #include "mavlink_interface.h"
 #include <so101/grasp_feedback_collector.h>
+#include <so101/wall_step_pacer.h>
 #include "msgbuffer.h"
 
 //! Default distance sensor model joint naming
@@ -298,6 +299,8 @@ private:
 
   bool enable_lockstep_{false};
   double speed_factor_{1.0};
+  bool demo_wall_step_pacing_{false};
+  so101_time::WallStepPacer<> demo_wall_step_pacer_;
   unsigned update_skip_factor_{1};
   uint64_t update_counter_{0u};
 

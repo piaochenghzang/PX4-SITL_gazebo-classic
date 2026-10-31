@@ -31,6 +31,10 @@ endfunction(add_unit_test)
     target_link_libraries(so101_contact_force_test gazebo_msgs ${PROTOBUF_LIBRARIES})
     add_test(NAME so101_contact_force_test COMMAND so101_contact_force_test)
 
+    # Fake-clock pacing checks: no Gazebo process or real sleeps.
+    add_executable(so101_wall_step_pacer_test so101_wall_step_pacer_test.cpp)
+    add_test(NAME so101_wall_step_pacer_test COMMAND so101_wall_step_pacer_test)
+
 
 
     # Gimbal controller plugin
