@@ -123,7 +123,8 @@ void GraspFeedbackCollector::Contacts(ConstContactsPtr &message)
         if (first == second) continue;
         const auto &against = first ? c.collision2() : c.collision1();
         const int side = against == fixed_->GetScopedName() ? 0 : against == moving_->GetScopedName() ? 1 : -1;
-        support |= prefix(against,support_root); other |= side < 0 && prefix(against,vehicle_root);
+        if (!contact_only_) support |= prefix(against,support_root);
+        other |= side < 0 && prefix(against,vehicle_root);
         if (contact_only_ && side>=0 && (!grasp_surface_ ||
                 (first ? c.collision1() : c.collision2())!=grasp_surface_->GetScopedName())) {
             other=true; continue; // Pads may touch the designated handle only.
@@ -177,9 +178,10 @@ bool GraspFeedbackCollector::Sample(mavlink_arm_grasp_feedback_t &out)
         out.capabilities |= 2;
     if (contact_only_) {
         const float unknown=std::numeric_limits<float>::quiet_NaN();
-        // Unknown is explicit: no object WorldPose, bench contract or bounds.
+        // Pad sensing cannot observe target/support separation. Keep it unknown,
+        // together with object WorldPose, bench contract and bounds.
         for (int i=0; i<3; ++i) out.object_center_gripper[i]=unknown;
-        out.object_height_world=out.body_support_clearance=out.vertical_force_n=unknown;
+        out.object_height_world=out.body_support_clearance=out.vertical_force_n=out.support_fraction=unknown;
         if (!(out.capabilities & 2)) out.fixed_normal_n=out.moving_normal_n=unknown;
         ClearWindow(); last_publish_=now;
         return true;
