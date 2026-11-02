@@ -200,6 +200,8 @@ private:
   bool IsRunning();
   void onSigInt();
   void SetupArmTransport(const std::string &world_name);
+  void DemoBenchLockCallback(ConstIntPtr &message);
+  void UpdateDemoBenchLock();
   void ArmJointCommandCallback(const mavlink_arm_joint_command_t &command);
   void PublishArmJointCommand();
   void ArmJointStatusCallback(ConstVector2dPtr &msg, int index);
@@ -309,6 +311,11 @@ private:
 
   static constexpr int kArmJointCount = 6;
 
+  // Explicit bench fixture: support base position with free attitude, never the payload.
+  bool demo_bench_lock_{false};
+  std::atomic<bool> demo_bench_lock_requested_{false};
+  transport::SubscriberPtr demo_bench_lock_sub_;
+  physics::JointPtr demo_bench_joint_;
   transport::NodePtr arm_node_;
   std::array<transport::PublisherPtr, kArmJointCount> arm_command_pub_;
   std::array<transport::SubscriberPtr, kArmJointCount> arm_status_sub_;

@@ -426,6 +426,12 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
     gzmsg << "Demo wall-step pacing enabled (no catch-up): " << step/speed_factor_ << " s per step" << std::endl;
   }
 
+  demo_bench_lock_ = _sdf->HasElement("demoBenchLock") && _sdf->Get<bool>("demoBenchLock");
+  if (demo_bench_lock_ && (!enable_lockstep_ || hil_mode_ ||
+      !_sdf->HasElement("armGraspContactOnly") || !_sdf->Get<bool>("armGraspContactOnly"))) {
+    throw std::invalid_argument("demoBenchLock requires contact-only SITL lockstep");
+  }
+
   // Listen to the update event. This event is broadcast every
   // simulation iteration.
   updateConnection_ = event::Events::ConnectWorldUpdateBegin(
@@ -498,6 +504,12 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
 #endif
 
   SetupArmTransport(worldName);
+  if (demo_bench_lock_) {
+    demo_bench_lock_sub_ = arm_node_->Subscribe("~/" + model_->GetName() + "/demo_bench_lock",
+        &GazeboMavlinkInterface::DemoBenchLockCallback, this);
+    gzmsg << "[SO101] mechanical bench fixture enabled; airborne grasp is NOT validated\n";
+  }
+
 
   if (_sdf->HasElement("mavlink_udp_port")) {
     int mavlink_udp_port = _sdf->GetElement("mavlink_udp_port")->Get<int>();
@@ -593,6 +605,7 @@ void GazeboMavlinkInterface::OnUpdate(const common::UpdateInfo&  /*_info*/) {
     demo_wall_step_pacer_.Pace([] { return std::chrono::steady_clock::now(); },
         [](std::chrono::steady_clock::time_point deadline) { std::this_thread::sleep_until(deadline); });
   }
+  UpdateDemoBenchLock();
   std::unique_lock<std::mutex> lock(imu_received_mutex_);
 
   if (imu_received_once_) {
@@ -1317,6 +1330,25 @@ bool GazeboMavlinkInterface::IsRunning()
 }
 void GazeboMavlinkInterface::onSigInt() {
   mavlink_interface_->onSigInt();
+}
+
+void GazeboMavlinkInterface::DemoBenchLockCallback(ConstIntPtr &message)
+{
+    if (demo_bench_lock_ && message->data() == 1) demo_bench_lock_requested_.store(true);
+}
+
+void GazeboMavlinkInterface::UpdateDemoBenchLock()
+{
+    // Create the physical constraint on the world-update thread. The fixture
+    // captures the CURRENT base position; attitude stays free for normal flight
+    // control. No parameter changes, pose writes or target attachment.
+    if (!demo_bench_lock_ || !demo_bench_lock_requested_.exchange(false) || demo_bench_joint_) return;
+    const auto base = model_->GetLink("yhang550_base::base_link");
+    if (!base) { gzerr << "[SO101] bench fixture: vehicle base missing\n"; return; }
+    demo_bench_joint_ = model_->CreateJoint("demo_bench_anchor", "ball", physics::LinkPtr(), base);
+    if (!demo_bench_joint_) { gzerr << "[SO101] bench fixture: joint creation failed\n"; return; }
+    demo_bench_joint_->Init();
+    gzmsg << "[SO101] mechanical bench fixture SUPPORTS base position; attitude free; payload dynamic\n";
 }
 
 void GazeboMavlinkInterface::SetupArmTransport(const std::string &world_name)
